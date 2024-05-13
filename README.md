@@ -1,2 +1,2 @@
-# Post-Service
-Service for handling user posts
+# Search-Service
+Service allowing users to search
