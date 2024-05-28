@@ -11,68 +11,76 @@ MEDIA_BUCKET_NAME = "car-network-media-bucket"
 DB_HOST = 'car-network-db.c5kgayasi5x2.us-east-1.rds.amazonaws.com'
 DB_USER = 'admin'
 DB_PASSWORD = 'FrostGaming1!'
+DB_NAME = "post_db"
 
 
 def lambda_handler(event, context):
-    # Determine the HTTP method
-    http_method = None
-    http_method = event['httpMethod']
-    
-    
-    if http_method == 'GET':
-        pass
-    
-    elif http_method == 'POST':
-        try:
-            # Parse the request body
-            request_body = json.loads(event['body'])
-            user_id = request_body.get('user_id')
-            post_text = request_body.get('post_text')
-            media_filename = request_body.get('media_filename')
-
-            # Validate input
-            if not user_id or not post_text:
-                return {
-                    'statusCode': 400,
-                    'body': json.dumps({'error': 'Missing required parameters'})
-                }
-
-            
-            # Save post data to the database
-            post_id = save_post_to_database(user_id, post_text)
-            
-            # Generate a pre-signed URL for the media upload if media exists
-
-            presigned_url = None
-
-            if media_filename:
-                media_key = f'uploads/{user_id}/{media_filename}'
-                presigned_url = generate_presigned_url(MEDIA_BUCKET_NAME, media_key)
-            
-                if not presigned_url:
-                    raise Exception("Failed to generate pre-signed URL")
-            
+    try:
+        http_method = event['httpMethod']
+        
+        if http_method == 'GET':
+            return handle_get(event)
+        elif http_method == 'POST':
+            return handle_post(event)
+        else:
             return {
-                'statusCode': 200,
-                'body': json.dumps({'post_id': post_id, 'upload_url': presigned_url})
+                'statusCode': 405,
+                'body': json.dumps({'error': 'Method Not Allowed'})
             }
-    
-        except Exception as e:
-            return {
-                'statusCode': 500,
-                'body': json.dumps({'error': str(e)})
-            }
-    
-    else:
+    except Exception as e:
         return {
-            'statusCode': 400,
-            'body': json.dumps(event)
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
         }
-    
-    
+
+def handle_get(event):
+    # Handle GET requests here
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'message': 'GET method is not implemented yet'})
+    }
+
+def handle_post(event):
+    try:
+        # Parse the request body
+        request_body = json.loads(event['body'])
+        user_id = request_body.get('user_id')
+        post_text = request_body.get('post_text')
+        media_filename = request_body.get('media_filename')
+
+        # Validate input
+        if not user_id or not post_text:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Missing required parameters'})
+            }
+
+        # Save post data to the database
+        post_id = save_post_to_database(user_id, post_text)
+        
+        # Generate a pre-signed URL for the media upload if media exists
+        presigned_url = None
+        media_key = None
+
+        if media_filename:
+            media_key = f'uploads/{user_id}/{media_filename}'
+            presigned_url = generate_presigned_url(MEDIA_BUCKET_NAME, media_key)
+            
+            if not presigned_url:
+                raise Exception("Failed to generate pre-signed URL")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'post_id': post_id, 'upload_url': presigned_url, 'media_key': media_key})
+        }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
 
 def generate_presigned_url(bucket_name, object_name, expiration=3600):
-    """Generate a pre-signed URL for uploading to S3."""
     try:
         response = s3_client.generate_presigned_url(
             'put_object',
@@ -85,27 +93,21 @@ def generate_presigned_url(bucket_name, object_name, expiration=3600):
         return None
 
 def save_post_to_database(user_id, post_text):
-    """Save post data to the MySQL database."""
     connection = pymysql.connect(host=DB_HOST,
                                  user=DB_USER,
                                  password=DB_PASSWORD,
-                                 database="post_db")
+                                 database=DB_NAME)
     try:
         with connection.cursor() as cursor:
             sql = "INSERT INTO posts (user_id, content) VALUES (%s, %s)"
-            cursor.execute(sql, ( user_id, post_text))
+            cursor.execute(sql, (user_id, post_text))
             post_id = cursor.lastrowid
         connection.commit()
-
         return post_id
-    
     except Exception as e:
         connection.rollback()
         print(str(e))
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f'Error: {str(e)}')
-        }
+        raise e
     finally:
         connection.close()
 
