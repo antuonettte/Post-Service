@@ -22,6 +22,7 @@ def lambda_handler(event, context):
             return handle_get(event)
         elif http_method == 'POST':
             return handle_post(event)
+            
         else:
             return {
                 'statusCode': 405,
@@ -47,6 +48,7 @@ def handle_post(event):
         user_id = request_body.get('user_id')
         post_text = request_body.get('post_text')
         media_filename = request_body.get('media_filename')
+        content_type = request_body.get('content_type')
 
         # Validate input
         if not user_id or not post_text:
@@ -64,7 +66,7 @@ def handle_post(event):
 
         if media_filename:
             media_key = f'uploads/{user_id}/{media_filename}'
-            presigned_url = generate_presigned_url(MEDIA_BUCKET_NAME, media_key)
+            presigned_url = generate_presigned_url(MEDIA_BUCKET_NAME, media_key, content_type)
             
             if not presigned_url:
                 raise Exception("Failed to generate pre-signed URL")
@@ -80,11 +82,11 @@ def handle_post(event):
             'body': json.dumps({'error': str(e)})
         }
 
-def generate_presigned_url(bucket_name, object_name, expiration=3600):
+def generate_presigned_url(bucket_name, object_name, content_type, expiration=3600):
     try:
         response = s3_client.generate_presigned_url(
             'put_object',
-            Params={'Bucket': bucket_name, 'Key': object_name},
+            Params={'Bucket': bucket_name, 'Key': object_name, 'ContentType':content_type},
             ExpiresIn=expiration
         )
         return response
