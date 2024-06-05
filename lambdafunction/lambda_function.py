@@ -17,9 +17,15 @@ DB_NAME = "post_db"
 def lambda_handler(event, context):
     try:
         http_method = event['httpMethod']
+        path = event['resource']
+        query_parameters = event.get('queryStringParameters', {})
         
         if http_method == 'GET':
-            return handle_get(event)
+
+            if path == '/posts':
+                return get_all_posts_by_user_id(event)
+            elif path == '/post':
+                return get_post_by_post_id(event)
         elif http_method == 'POST':
             return handle_post(event)
             
@@ -33,13 +39,78 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
         }
+    
+def get_post_by_post_id(event):
+    try:
+        # Get the post_id from the path parameters
+        post_id = event['pathParameters']['post_id']
 
-def handle_get(event):
-    # Handle GET requests here
-    return {
-        'statusCode': 200,
-        'body': json.dumps({'message': 'GET method is not implemented yet'})
-    }
+        connection = pymysql.connect(host=DB_HOST,
+                                     user=DB_USER,
+                                     password=DB_PASSWORD,
+                                     database=DB_NAME)
+        try:
+            with connection.cursor() as cursor:
+                sql = "SELECT * FROM posts WHERE post_id = %s"
+                cursor.execute(sql, (post_id,))
+                post = cursor.fetchone()
+
+            connection.commit()
+
+            if post:
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({'post': post})
+                }
+            else:
+                return {
+                    'statusCode': 404,
+                    'body': json.dumps({'error': 'Post not found'})
+                }
+        except Exception as e:
+            connection.rollback()
+            raise e
+        finally:
+            connection.close()
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
+def get_all_posts_by_user_id(event):
+    try:
+        # Get the user_id from the path parameters
+        user_id = event['pathParameters']['user_id']
+
+        connection = pymysql.connect(host=DB_HOST,
+                                     user=DB_USER,
+                                     password=DB_PASSWORD,
+                                     database=DB_NAME)
+        try:
+            with connection.cursor() as cursor:
+                sql = "SELECT * FROM posts WHERE user_id = %s"
+                cursor.execute(sql, (user_id,))
+                posts = cursor.fetchall()
+
+            connection.commit()
+
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'posts': posts})
+            }
+        except Exception as e:
+            connection.rollback()
+            raise e
+        finally:
+            connection.close()
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
 
 def handle_post(event):
     try:
