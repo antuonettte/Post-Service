@@ -1,6 +1,7 @@
 import json
 import boto3
 import pymysql
+import logging
 
 
 # Initialize AWS clients
@@ -14,18 +15,37 @@ DB_PASSWORD = 'FrostGaming1!'
 DB_NAME = "post_db"
 
 
+#Logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 def lambda_handler(event, context):
     try:
         http_method = event['httpMethod']
         path = event['resource']
         query_parameters = event.get('queryStringParameters', {})
+        logger.info(event)
+        logger.info(query_parameters)
         
         if http_method == 'GET':
-
-            if path == '/posts':
-                return get_all_posts_by_user_id(event)
-            elif path == '/post':
-                return get_post_by_post_id(event)
+            logger.info("Get Method Called on: %s", path)
+        
+            if path == '/post-management/posts':
+                if query_parameters and 'user_id' in query_parameters:
+                    return get_all_posts_by_user_id(event)
+                else:
+                    return {
+                        'statusCode':400,
+                        'body':json.dumps({'error': 'Missing user ID'})
+                    }
+            elif path == '/post-management/post':
+                if query_parameters and  'id' in query_parameters:
+                    return get_post_by_post_id(event)
+                else:
+                    return {
+                        'statusCode':400,
+                        'body':json.dumps({'error': 'Missing post ID'})
+                    }
         elif http_method == 'POST':
             return handle_post(event)
             
@@ -43,16 +63,19 @@ def lambda_handler(event, context):
 def get_post_by_post_id(event):
     try:
         # Get the post_id from the path parameters
-        post_id = event['pathParameters']['post_id']
-
+        logger.info(event)
+        id = event['queryStringParameters']['id']
+        logger.info("Getting post for post id: %s", id)
+        logger.info("creating db connection")
         connection = pymysql.connect(host=DB_HOST,
                                      user=DB_USER,
                                      password=DB_PASSWORD,
                                      database=DB_NAME)
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT * FROM posts WHERE post_id = %s"
-                cursor.execute(sql, (post_id,))
+                sql = "SELECT id, user_id, content FROM posts WHERE id = %s"
+                cursor.execute(sql, (id,))
+                logger.info("Fetching post")
                 post = cursor.fetchone()
 
             connection.commit()
@@ -68,11 +91,13 @@ def get_post_by_post_id(event):
                     'body': json.dumps({'error': 'Post not found'})
                 }
         except Exception as e:
+            logger.info(str(e))
             connection.rollback()
             raise e
         finally:
             connection.close()
     except Exception as e:
+        logger.info(str(e))
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
@@ -82,15 +107,15 @@ def get_post_by_post_id(event):
 def get_all_posts_by_user_id(event):
     try:
         # Get the user_id from the path parameters
-        user_id = event['pathParameters']['user_id']
-
+        user_id = event['queryStringParameters']['user_id']
+        logger.info("Getting all posts for user: %s", user_id)
         connection = pymysql.connect(host=DB_HOST,
                                      user=DB_USER,
                                      password=DB_PASSWORD,
                                      database=DB_NAME)
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT * FROM posts WHERE user_id = %s"
+                sql = "SELECT id, user_id, content FROM posts WHERE user_id = %s"
                 cursor.execute(sql, (user_id,))
                 posts = cursor.fetchall()
 
@@ -101,11 +126,14 @@ def get_all_posts_by_user_id(event):
                 'body': json.dumps({'posts': posts})
             }
         except Exception as e:
+            logger.error(str(e))
             connection.rollback()
             raise e
         finally:
             connection.close()
+            
     except Exception as e:
+        logger.error(str(e))
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
